@@ -1,4 +1,4 @@
-fastapi
-uvicorn[standard]
+flask
+pydantic
 pyjwt
 python-multipart

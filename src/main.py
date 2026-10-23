@@ -1,16 +1,11 @@
-"""SelfCloud – self-hosted storage for files and notes (FastAPI + SQLite)."""
+"""SelfCloud – self-hosted storage for files and notes (Flask + SQLite)."""
 import hashlib, hmac, os, secrets, shutil, sqlite3, threading, time, uuid
 from pathlib import Path
 from typing import Optional
 
 import jwt
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-
-import uvicorn
+from flask import Flask, request, jsonify, send_file, send_from_directory, abort
+from pydantic import BaseModel, ValidationError
 
 DATA = Path(os.getenv("DATA_DIR", "data"))
 FILES = DATA / "files"
@@ -46,7 +41,7 @@ class Res:
 
 
 class DB:
-    """Połączenie SQLite bezpieczne dla wątków (FastAPI uruchamia endpointy w puli wątków)."""
+    """Połączenie SQLite bezpieczne dla wątków (Flask obsługuje zapytania wielowątkowo)."""
     def __init__(s, path):
         s.c = sqlite3.connect(path, check_same_thread=False)
         s.c.row_factory = sqlite3.Row
@@ -116,26 +111,46 @@ def bootstrap_admin():
 
 
 bootstrap_admin()
-bearer = HTTPBearer(auto_error=False)
 
 
-def current_user(request: Request, c: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
-    tok = c.credentials if c else request.query_params.get("token")  # ?token= pozwala pobierać pliki zwykłym linkiem
+class APIException(Exception):
+    def __init__(self, status_code, message):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+app = Flask(__name__, static_folder="static", static_url_path="")
+
+
+@app.errorhandler(APIException)
+def handle_api_exception(e):
+    return jsonify({"detail": e.message}), e.status_code
+
+
+def get_current_user():
+    auth = request.headers.get("Authorization")
+    tok = None
+    if auth and auth.startswith("Bearer "):
+        tok = auth.split(" ")[1]
     if not tok:
-        raise HTTPException(401, "Wymagane logowanie")
+        tok = request.args.get("token")  # ?token= pozwala pobierać pliki zwykłym linkiem
+    if not tok:
+        raise APIException(401, "Wymagane logowanie")
     try:
         uid = jwt.decode(tok, SECRET, algorithms=["HS256"])["sub"]
     except jwt.PyJWTError:
-        raise HTTPException(401, "Sesja wygasła – zaloguj się ponownie")
+        raise APIException(401, "Sesja wygasła – zaloguj się ponownie")
     u = db.execute("SELECT * FROM users WHERE id=?", (int(uid),)).fetchone()
     if not u or not u["is_active"]:
-        raise HTTPException(403, "Konto nieaktywne")
+        raise APIException(403, "Konto nieaktywne")
     return u
 
 
-def admin_user(u=Depends(current_user)):
+def get_admin_user():
+    u = get_current_user()
     if not u["is_admin"]:
-        raise HTTPException(403, "Tylko dla administratora")
+        raise APIException(403, "Tylko dla administratora")
     return u
 
 
@@ -167,7 +182,16 @@ class PwChange(BaseModel):
     new_password: str
 
 
-app = FastAPI(title="SelfCloud")
+class Rename(BaseModel):
+    name: str
+
+
+def parse_json(model_cls):
+    data = request.get_json(silent=True) or {}
+    try:
+        return model_cls(**data)
+    except ValidationError:
+        raise APIException(400, "Nieprawidłowe dane wejściowe")
 
 
 # ---------- auth ----------
@@ -175,74 +199,88 @@ def make_user(username: str, password: str, admin=False):
     c = cfg()
     username = username.strip()
     if not (3 <= len(username) <= 32) or not username.replace("_", "").replace(".", "").isalnum():
-        raise HTTPException(400, "Nazwa: 3–32 znaków, litery, cyfry, _ lub .")
+        raise APIException(400, "Nazwa: 3–32 znaków, litery, cyfry, _ lub .")
     if len(password) < c["min_password_length"]:
-        raise HTTPException(400, f"Hasło musi mieć min. {c['min_password_length']} znaków")
+        raise APIException(400, f"Hasło musi mieć min. {c['min_password_length']} znaków")
     try:
         cur = db.execute("INSERT INTO users(username,pw,is_admin,quota_mb,created) VALUES(?,?,?,?,?)",
                          (username, hash_pw(password), int(admin), c["default_quota_mb"], time.time()))
         db.commit()
     except sqlite3.IntegrityError:
-        raise HTTPException(409, "Taka nazwa użytkownika już istnieje")
+        raise APIException(409, "Taka nazwa użytkownika już istnieje")
     return cur.lastrowid
 
 
 @app.get("/api/public")
 def public_info():
     c = cfg()
-    return {"site_name": c["site_name"], "registration_enabled": c["registration_enabled"]}
+    return jsonify({"site_name": c["site_name"], "registration_enabled": c["registration_enabled"]})
 
 
 @app.post("/api/register")
-def register(b: Creds):
+def register():
     if not cfg()["registration_enabled"]:
-        raise HTTPException(403, "Rejestracja jest wyłączona")
+        raise APIException(403, "Rejestracja jest wyłączona")
+    b = parse_json(Creds)
     make_user(b.username, b.password)
-    return login(b)
+    return login_logic(b)
 
 
 @app.post("/api/login")
-def login(b: Creds):
+def login():
+    b = parse_json(Creds)
+    return login_logic(b)
+
+
+def login_logic(b: Creds):
     u = db.execute("SELECT * FROM users WHERE username=?", (b.username.strip(),)).fetchone()
     if not u or not check_pw(b.password, u["pw"]):
-        raise HTTPException(401, "Błędna nazwa użytkownika lub hasło")
+        raise APIException(401, "Błędna nazwa użytkownika lub hasło")
     if not u["is_active"]:
-        raise HTTPException(403, "Konto zostało zablokowane")
+        raise APIException(403, "Konto zostało zablokowane")
     exp = time.time() + cfg()["token_ttl_minutes"] * 60
-    return {"token": jwt.encode({"sub": str(u["id"]), "exp": exp}, SECRET, algorithm="HS256")}
+    return jsonify({"token": jwt.encode({"sub": str(u["id"]), "exp": exp}, SECRET, algorithm="HS256")})
 
 
 @app.get("/api/me")
-def me(u=Depends(current_user)):
-    return public(u)
+def me():
+    u = get_current_user()
+    return jsonify(public(u))
 
 
 @app.post("/api/me/password")
-def change_pw(b: PwChange, u=Depends(current_user)):
+def change_pw():
+    u = get_current_user()
+    b = parse_json(PwChange)
     if not check_pw(b.old_password, u["pw"]):
-        raise HTTPException(400, "Stare hasło jest nieprawidłowe")
+        raise APIException(400, "Stare hasło jest nieprawidłowe")
     if len(b.new_password) < cfg()["min_password_length"]:
-        raise HTTPException(400, "Nowe hasło jest za krótkie")
+        raise APIException(400, "Nowe hasło jest za krótkie")
     db.execute("UPDATE users SET pw=? WHERE id=?", (hash_pw(b.new_password), u["id"]))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
 # ---------- files ----------
 @app.get("/api/files")
-def list_files(u=Depends(current_user)):
+def list_files():
+    u = get_current_user()
     rows = db.execute("SELECT id,name,size,created FROM files WHERE owner=? ORDER BY created DESC", (u["id"],))
-    return [dict(r) for r in rows]
+    return jsonify([dict(r) for r in rows])
 
 
 @app.post("/api/files")
-async def upload(f: UploadFile = File(...), u=Depends(current_user)):
+def upload():
+    u = get_current_user()
     c = cfg()
+    f = request.files.get("f") or request.files.get("file")
+    if not f:
+        raise APIException(400, "Brak pliku")
     name = Path(f.filename or "plik").name
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     allowed, blocked = ext_list(c["allowed_extensions"]), ext_list(c["blocked_extensions"])
     if ext in blocked or (allowed and ext not in allowed):
-        raise HTTPException(400, f"Typ pliku „.{ext}” jest niedozwolony")
+        raise APIException(400, f"Typ pliku „.{ext}” jest niedozwolony")
     fid = uuid.uuid4().hex
     folder = FILES / str(u["id"])
     folder.mkdir(exist_ok=True)
@@ -250,157 +288,193 @@ async def upload(f: UploadFile = File(...), u=Depends(current_user)):
     limit = c["max_upload_mb"] * 1024 * 1024
     quota = (u["quota_mb"] or 0) * 1024 * 1024
     before = used_bytes(u["id"])
+    
     with open(path, "wb") as out:
-        while chunk := await f.read(1024 * 1024):
+        while True:
+            chunk = f.stream.read(1024 * 1024)
+            if not chunk:
+                break
             size += len(chunk)
             if limit and size > limit or quota and before + size > quota:
-                out.close(); path.unlink(missing_ok=True)
-                raise HTTPException(413, "Plik jest za duży lub przekroczono limit miejsca")
+                out.close()
+                path.unlink(missing_ok=True)
+                raise APIException(413, "Plik jest za duży lub przekroczono limit miejsca")
             out.write(chunk)
+            
     db.execute("INSERT INTO files VALUES(?,?,?,?,?)", (fid, u["id"], name, size, time.time()))
     db.commit()
-    return {"id": fid, "name": name, "size": size}
+    return jsonify({"id": fid, "name": name, "size": size})
 
 
 def own_file(fid: str, u):
     r = db.execute("SELECT * FROM files WHERE id=? AND owner=?", (fid, u["id"])).fetchone()
     if not r:
-        raise HTTPException(404, "Nie znaleziono pliku")
+        raise APIException(404, "Nie znaleziono pliku")
     return r
 
 
-@app.get("/api/files/{fid}")
-def download(fid: str, u=Depends(current_user)):
+@app.get("/api/files/<fid>")
+def download(fid: str):
+    u = get_current_user()
     r = own_file(fid, u)
-    return FileResponse(FILES / str(u["id"]) / fid, filename=r["name"])
+    return send_file(FILES / str(u["id"]) / fid, as_attachment=True, download_name=r["name"])
 
 
-class Rename(BaseModel):
-    name: str
-
-
-@app.patch("/api/files/{fid}")
-def rename_file(fid: str, b: Rename, u=Depends(current_user)):
+@app.patch("/api/files/<fid>")
+def rename_file(fid: str):
+    u = get_current_user()
     own_file(fid, u)
+    b = parse_json(Rename)
     name = Path(b.name.strip()).name
     if not name:
-        raise HTTPException(400, "Nazwa nie może być pusta")
+        raise APIException(400, "Nazwa nie może być pusta")
     db.execute("UPDATE files SET name=? WHERE id=?", (name, fid))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
-@app.delete("/api/files/{fid}")
-def delete_file(fid: str, u=Depends(current_user)):
+@app.delete("/api/files/<fid>")
+def delete_file(fid: str):
+    u = get_current_user()
     own_file(fid, u)
     (FILES / str(u["id"]) / fid).unlink(missing_ok=True)
     db.execute("DELETE FROM files WHERE id=?", (fid,))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
 # ---------- notes ----------
 @app.get("/api/notes")
-def list_notes(u=Depends(current_user)):
+def list_notes():
+    u = get_current_user()
     rows = db.execute("SELECT * FROM notes WHERE owner=? ORDER BY updated DESC", (u["id"],))
-    return [dict(r) for r in rows]
+    return jsonify([dict(r) for r in rows])
 
 
 @app.post("/api/notes")
-def create_note(n: NoteIn, u=Depends(current_user)):
+def create_note():
+    u = get_current_user()
+    n = parse_json(NoteIn)
     m = cfg()["max_notes_per_user"]
     if m and db.execute("SELECT COUNT(*) FROM notes WHERE owner=?", (u["id"],)).fetchone()[0] >= m:
-        raise HTTPException(400, "Osiągnięto limit notatek")
+        raise APIException(400, "Osiągnięto limit notatek")
     cur = db.execute("INSERT INTO notes(owner,title,body,updated) VALUES(?,?,?,?)",
                      (u["id"], n.title, n.body, time.time()))
     db.commit()
-    return {"id": cur.lastrowid}
+    return jsonify({"id": cur.lastrowid})
 
 
-@app.put("/api/notes/{nid}")
-def update_note(nid: int, n: NoteIn, u=Depends(current_user)):
+@app.put("/api/notes/<int:nid>")
+def update_note(nid: int):
+    u = get_current_user()
+    n = parse_json(NoteIn)
     cur = db.execute("UPDATE notes SET title=?,body=?,updated=? WHERE id=? AND owner=?",
                      (n.title, n.body, time.time(), nid, u["id"]))
     db.commit()
     if not cur.rowcount:
-        raise HTTPException(404, "Nie znaleziono notatki")
-    return {"ok": True}
+        raise APIException(404, "Nie znaleziono notatki")
+    return jsonify({"ok": True})
 
 
-@app.delete("/api/notes/{nid}")
-def delete_note(nid: int, u=Depends(current_user)):
+@app.delete("/api/notes/<int:nid>")
+def delete_note(nid: int):
+    u = get_current_user()
     db.execute("DELETE FROM notes WHERE id=? AND owner=?", (nid, u["id"]))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
 # ---------- admin ----------
 @app.get("/api/admin/stats")
-def stats(_=Depends(admin_user)):
+def stats():
+    get_admin_user()
     q = lambda s: db.execute(s).fetchone()[0]
-    return {"users": q("SELECT COUNT(*) FROM users"), "files": q("SELECT COUNT(*) FROM files"),
-            "notes": q("SELECT COUNT(*) FROM notes"), "bytes": q("SELECT COALESCE(SUM(size),0) FROM files"),
-            "disk_free": shutil.disk_usage(DATA).free}
+    return jsonify({
+        "users": q("SELECT COUNT(*) FROM users"),
+        "files": q("SELECT COUNT(*) FROM files"),
+        "notes": q("SELECT COUNT(*) FROM notes"),
+        "bytes": q("SELECT COALESCE(SUM(size),0) FROM files"),
+        "disk_free": shutil.disk_usage(DATA).free
+    })
 
 
 @app.get("/api/admin/users")
-def users(_=Depends(admin_user)):
-    return [public(u) for u in db.execute("SELECT * FROM users ORDER BY id")]
+def users():
+    get_admin_user()
+    return jsonify([public(u) for u in db.execute("SELECT * FROM users ORDER BY id")])
 
 
 @app.post("/api/admin/users")
-def admin_create(b: Creds, _=Depends(admin_user)):
-    return {"id": make_user(b.username, b.password)}
+def admin_create():
+    get_admin_user()
+    b = parse_json(Creds)
+    return jsonify({"id": make_user(b.username, b.password)})
 
 
-@app.patch("/api/admin/users/{uid}")
-def admin_patch(uid: int, p: UserPatch, a=Depends(admin_user)):
+@app.patch("/api/admin/users/<int:uid>")
+def admin_patch(uid: int):
+    a = get_admin_user()
+    p = parse_json(UserPatch)
     if uid == a["id"] and (p.is_admin is False or p.is_active is False):
-        raise HTTPException(400, "Nie możesz odebrać sobie uprawnień ani zablokować własnego konta")
+        raise APIException(400, "Nie możesz odebrać sobie uprawnień ani zablokować własnego konta")
     for col, val in (("is_admin", p.is_admin), ("is_active", p.is_active), ("quota_mb", p.quota_mb)):
         if val is not None:
             db.execute(f"UPDATE users SET {col}=? WHERE id=?", (int(val), uid))
     if p.password:
         if len(p.password) < cfg()["min_password_length"]:
-            raise HTTPException(400, "Hasło jest za krótkie")
+            raise APIException(400, "Hasło jest za krótkie")
         db.execute("UPDATE users SET pw=? WHERE id=?", (hash_pw(p.password), uid))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
-@app.delete("/api/admin/users/{uid}")
-def admin_delete(uid: int, a=Depends(admin_user)):
+@app.delete("/api/admin/users/<int:uid>")
+def admin_delete(uid: int):
+    a = get_admin_user()
     if uid == a["id"]:
-        raise HTTPException(400, "Nie możesz usunąć własnego konta")
+        raise APIException(400, "Nie możesz usunąć własnego konta")
     shutil.rmtree(FILES / str(uid), ignore_errors=True)
     for t, col in (("files", "owner"), ("notes", "owner"), ("users", "id")):
         db.execute(f"DELETE FROM {t} WHERE {col}=?", (uid,))
     db.commit()
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
 @app.get("/api/admin/settings")
-def get_settings(_=Depends(admin_user)):
-    return cfg()
+def get_settings():
+    get_admin_user()
+    return jsonify(cfg())
 
 
 @app.put("/api/admin/settings")
-def put_settings(new: dict, _=Depends(admin_user)):
+def put_settings():
+    get_admin_user()
+    new = request.get_json(silent=True) or {}
     for k, v in new.items():
         if k not in DEFAULT_SETTINGS:
-            raise HTTPException(400, f"Nieznane ustawienie: {k}")
+            raise APIException(400, f"Nieznane ustawienie: {k}")
         t = type(DEFAULT_SETTINGS[k])
         try:
             v = bool(v) if t is bool else t(v)
         except (TypeError, ValueError):
-            raise HTTPException(400, f"Nieprawidłowa wartość: {k}")
+            raise APIException(400, f"Nieprawidłowa wartość: {k}")
         db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (k, "1" if v is True else "0" if v is False else str(v)))
     db.commit()
-    return cfg()
+    return jsonify(cfg())
 
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
+# ---------- static / spa routing ----------
+STATIC_DIR = Path(__file__).parent / "static"
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_static(path):
+    if path.startswith("api/"):
+        abort(404)
+    if path and (STATIC_DIR / path).exists():
+        return send_from_directory(STATIC_DIR, path)
+    return send_from_directory(STATIC_DIR, "index.html")
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080)
