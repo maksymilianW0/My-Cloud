@@ -50,5 +50,5 @@ cleanup: clean
 
 
 reset:
-	rm -rf $(PROJECT_DIR)/src/data
-	mkdir $(PROJECT_DIR)/src/data
+	rm -rf $(PROJECT_DIR)/data
+	mkdir $(PROJECT_DIR)/data
