@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfCloud</title>
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#0f1b2d;--mute:#6b7a8d;--line:#e1e7ee;--acc:#0e9f8e;--accd:#0b7f72;--soft:#e6f6f4;--side:#0f1b2d;--danger:#d64545;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#0b121b;--card:#121c28;--ink:#e8eef5;--mute:#8b9bb0;--line:#1f2c3b;--soft:#10302f;--side:#080e15;--acc:#22b8a6}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,textarea{font:inherit;color:inherit}
+.hide{display:none!important}
+svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* przyciski i pola */
+button{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{border-color:var(--mute)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.pri:hover{background:var(--accd)}
+button.bad{background:var(--danger);border-color:var(--danger);color:#fff}
+button.ghost{border-color:transparent;background:none}
+button.ic{padding:6px;border-color:transparent;background:none;color:var(--mute)}
+button.ic:hover{background:var(--bg);color:var(--ink)}
+button.ic.del:hover{color:var(--danger)}
+input:not([type=checkbox]),textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+input:focus,textarea:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent)}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:12px}
+label input{margin-top:5px;font-weight:400}
+/* logowanie */
+#auth{min-height:100%;display:grid;grid-template-columns:1fr 1fr}
+.hero{background:var(--side);color:#fff;padding:48px;display:flex;flex-direction:column;justify-content:flex-end;background-image:radial-gradient(circle at 20% 15%,#0e9f8e55,transparent 55%)}
+.hero h1{font-size:44px;line-height:1.1;margin:0 0 12px;letter-spacing:-.02em}
+.hero p{margin:0;max-width:340px;color:#9fb0c3}
+.formwrap{display:grid;place-items:center;padding:24px}
+.formwrap form{width:100%;max-width:340px}
+.formwrap h2{margin:0 0 20px;font-size:22px}
+.formwrap button{width:100%;justify-content:center;margin-top:8px}
+.err{color:var(--danger);min-height:22px;font-size:14px}
+/* aplikacja */
+#app{display:grid;grid-template-columns:240px 1fr;min-height:100%}
+aside{background:var(--side);color:#c7d3e0;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:700;font-size:18px;padding:0 10px 18px}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--acc);display:grid;place-items:center;color:#fff}
+aside button.nav{width:100%;border:0;background:none;color:inherit;padding:10px 12px;border-radius:8px}
+aside button.nav:hover{background:#ffffff14}
+aside button.nav.on{background:#ffffff1f;color:#fff}
+.quota{margin-top:auto;padding:12px;border-radius:8px;background:#ffffff0f;font-size:13px}
+.bar{height:6px;border-radius:3px;background:#ffffff26;margin:8px 0 6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:3px;transition:width .3s}
+.who{display:flex;align-items:center;justify-content:space-between;padding:12px 6px 0;font-size:14px}
+.who button{color:#c7d3e0;padding:6px}
+.who button:hover{background:#ffffff14}
+main{padding:32px;max-width:1000px;width:100%}
+h1.pt{font-size:24px;margin:0 0 20px;letter-spacing:-.01em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:18px}
+.card h3{margin:0 0 14px;font-size:16px}
+.mute{color:var(--mute);font-size:13px}
+.empty{padding:36px 12px;text-align:center;color:var(--mute)}
+/* pliki */
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:28px;text-align:center;color:var(--mute);cursor:pointer;margin-bottom:18px;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--acc);background:var(--soft);color:var(--ink)}
+.drop svg{width:26px;height:26px;margin-bottom:4px}
+.q{display:flex;gap:12px;align-items:center;font-size:13px;margin-bottom:10px}
+.q .bar{background:var(--line);flex:1;margin:0}
+.toolbar{display:flex;gap:10px;margin-bottom:8px}
+.row{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .grow{flex:1;min-width:0}
+.row .grow b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{width:40px;height:40px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:700;background:hsl(var(--h) 70% 92%);color:hsl(var(--h) 60% 30%);text-transform:uppercase}
+@media(prefers-color-scheme:dark){.badge{background:hsl(var(--h) 35% 20%);color:hsl(var(--h) 70% 80%)}}
+/* notatki */
+.notes{display:grid;grid-template-columns:280px 1fr;gap:18px;height:calc(100vh - 130px);min-height:420px}
+.notes .card{margin:0;display:flex;flex-direction:column;min-height:0}
+.nlist{overflow:hidden}
+#nl{overflow:auto;flex:1;margin:0 -8px}
+.note{padding:10px 12px;border-radius:8px;cursor:pointer}
+.note:hover{background:var(--bg)}
+.note.on{background:var(--soft)}
+.note b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.note span{display:block;font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nt{font-size:20px;font-weight:700;border:0!important;box-shadow:none!important;padding:4px 0!important}
+#nb{flex:1;resize:none;border:0!important;box-shadow:none!important;padding:8px 0!important;line-height:1.65}
+.foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px}
+/* admin */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.stat b{display:block;font-size:24px;letter-spacing:-.01em}
+.set{display:grid;grid-template-columns:1fr 220px;gap:12px 24px;align-items:center}
+.set small{display:block;color:var(--mute);font-weight:400}
+.set label{margin:0}
+.sw{width:42px;height:24px;appearance:none;border-radius:12px;background:var(--line);position:relative;cursor:pointer;transition:.15s;justify-self:start}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
+.sw:checked{background:var(--acc)}.sw:checked::after{left:21px}
+.av{width:36px;height:36px;border-radius:50%;background:var(--soft);color:var(--accd);display:grid;place-items:center;font-weight:700;text-transform:uppercase}
+.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--soft);color:var(--accd);margin-left:6px}
+.tag.red{background:#d6454522;color:var(--danger)}
+.mini{height:5px;background:var(--line);border-radius:3px;margin-top:5px;width:160px;overflow:hidden}
+.mini i{display:block;height:100%;background:var(--acc)}
+.acts{display:flex;flex-wrap:wrap;gap:2px}
+.acts button{padding:5px 9px;font-size:13px}
+/* dialog + toast */
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);padding:24px;width:min(400px,92vw)}
+dialog::backdrop{background:#0008}
+dialog h3{margin:0 0 8px}
+dialog .acts{justify-content:flex-end;gap:8px;margin-top:8px}
+#toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:99}
+.toast{background:var(--side);color:#fff;padding:10px 16px;border-radius:8px;box-shadow:0 6px 20px #0004;animation:in .2s}
+.toast.err{background:var(--danger)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media(max-width:800px){
+ #auth{grid-template-columns:1fr}.hero{display:none}
+ #app{grid-template-columns:1fr}
+ aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px}
+ .brand{padding:0 8px 0 4px}.quota,.who span{display:none}.who{margin-left:auto;padding:0}
+ aside button.nav span{display:none}
+ main{padding:18px 14px}
+ .notes{grid-template-columns:1fr;height:auto}.nlist{max-height:200px}#nb{min-height:300px}
+ .set{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="auth" class="hide">
+  <div class="hero"><h1 id="heroName">SelfCloud</h1><p>Twoje pliki i notatki na Twoim własnym serwerze.</p></div>
+  <div class="formwrap"><form id="af">
+    <h2>Zaloguj się</h2>
+    <label>Nazwa użytkownika<input id="lu" autocomplete="username" required></label>
+    <label>Hasło<input id="lp" type="password" autocomplete="current-password" required></label>
+    <div class="err" id="lerr"></div>
+    <button class="pri" type="submit">Zaloguj się</button>
+    <button id="regBtn" type="button">Utwórz konto</button>
+  </form></div>
+</div>
+
+<div id="app" class="hide">
+  <aside>
+    <div class="brand"><div class="logo"></div><span id="brand">SelfCloud</span></div>
+    <div id="nav"></div>
+    <div class="quota"><div id="qtxt"></div><div class="bar"><i id="qbar"></i></div></div>
+    <div class="who"><span id="uname"></span><button id="out" title="Wyloguj"></button></div>
+  </aside>
+  <main id="view"></main>
+</div>
+<dialog id="dlg"></dialog>
+<div id="toasts"></div>
+
+<script>
+const $=(s,e=document)=>e.querySelector(s);
+const IC={files:'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+ notes:'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',account:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+ admin:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',out:'M9 21H5V3h4M16 17l5-5-5-5M21 12H9',
+ up:'M12 16V4M7 9l5-5 5 5M4 20h16',dl:'M12 4v12M7 11l5 5 5-5M4 20h16',del:'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+ edit:'M4 20h4L19 9l-4-4L4 16z',plus:'M12 5v14M5 12h14'};
+const ico=n=>`<svg viewBox="0 0 24 24"><path d="${IC[n]}"/></svg>`;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const size=b=>b>=1e9?(b/1e9).toFixed(2)+' GB':b>=1e6?(b/1e6).toFixed(1)+' MB':b>=1e3?Math.round(b/1e3)+' kB':b+' B';
+const date=t=>new Date(t*1000).toLocaleDateString('pl',{day:'numeric',month:'short',year:'numeric'});
+let token=localStorage.getItem('tok'),me=null,tab=localStorage.getItem('tab')||'files',pub={};
+
+function toast(m,err){const t=document.createElement('div');t.className='toast'+(err?' err':'');t.textContent=m;$('#toasts').append(t);setTimeout(()=>t.remove(),3800)}
+async function api(p,o={}){
+  o.headers={...(o.headers||{}),...(token?{Authorization:'Bearer '+token}:{})};
+  if(o.json){o.headers['Content-Type']='application/json';o.body=JSON.stringify(o.json)}
+  const r=await fetch('/api'+p,o);
+  if(!r.ok){
+    if(r.status===401&&token&&!['/login','/register'].includes(p)){logout();throw Error('Sesja wygasła – zaloguj się ponownie')}
+    const e=await r.json().catch(()=>({}));
+    throw Error(typeof e.detail==='string'?e.detail:Array.isArray(e.detail)?'Nieprawidłowe dane formularza':'Błąd serwera ('+r.status+')');
+  }
+  return r.json();
+}
+const safe=fn=>async(...a)=>{try{return await fn(...a)}catch(e){toast(e.message,1)}};
+function ask(title,fields=[],{ok='OK',danger=false,text=''}={}){
+  return new Promise(res=>{
+    const d=$('#dlg');
+    d.innerHTML=`<form method="dialog"><h3>${title}</h3>${text?`<p class="mute">${text}</p>`:''}
+    ${fields.map(f=>`<label>${f.label}<input name="${f.name}" type="${f.type||'text'}" value="${esc(f.value)}" ${f.type==='number'?'min="0"':''} required></label>`).join('')}
+    <div class="acts"><button type="button" class="ghost" onclick="this.closest('dialog').close('x')">Anuluj</button>
+    <button value="ok" class="pri ${danger?'bad':''}">${ok}</button></div></form>`;
+    d.onclose=()=>res(d.returnValue==='ok'?Object.fromEntries(new FormData($('form',d))):null);
+    d.returnValue='';d.showModal();$('input',d)?.select();
+  });
+}
+
+/* ---------- logowanie ---------- */
+let mode='login';
+async function boot(){
+  pub=await fetch('/api/public').then(r=>r.json()).catch(()=>({site_name:'SelfCloud'}));
+  document.title=pub.site_name;$('#heroName').textContent=pub.site_name;$('#brand').textContent=pub.site_name;
+  $('#regBtn').classList.toggle('hide',!pub.registration_enabled);
+  if(token){try{me=await api('/me')}catch{token=null;localStorage.removeItem('tok')}}
+  $('#auth').classList.toggle('hide',!!token);$('#app').classList.toggle('hide',!token);
+  if(!token)return;
+  $('#uname').textContent=me.username;$('#out').innerHTML=ico('out');
+  const tabs=[['files','Pliki'],['notes','Notatki'],['account','Konto'],...(me.is_admin?[['admin','Administracja']]:[])];
+  $('#nav').innerHTML=tabs.map(([k,l])=>`<button class="nav" data-tab="${k}">${ico(k)}<span>${l}</span></button>`).join('');
+  if(!tabs.some(t=>t[0]===tab))tab='files';
+  show(tab);
+}
+$('#af').onsubmit=async e=>{
+  e.preventDefault();$('#lerr').textContent='';
+  try{const d=await api('/'+mode,{method:'POST',json:{username:$('#lu').value,password:$('#lp').value}});
+    token=d.token;localStorage.setItem('tok',token);$('#lp').value='';boot()}
+  catch(x){$('#lerr').textContent=x.message}
+};
+$('#regBtn').onclick=()=>{mode='register';$('#af').requestSubmit();mode='login'};
+const logout=()=>{token=null;localStorage.removeItem('tok');boot()};
+$('#out').onclick=logout;
+$('#nav').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)show(b.dataset.tab)};
+async function refreshQuota(){
+  me=await api('/me');const q=me.quota_mb*1e6;
+  $('#qtxt').textContent=`Zajęte ${size(me.used)}`+(q?` z ${size(q)}`:' · bez limitu');
+  $('#qbar').style.width=q?Math.min(100,me.used/q*100)+'%':'0';
+}
+async function show(t){
+  await flushNote();tab=t;localStorage.setItem('tab',t);
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  $('#view').onclick=null;
+  await safe(()=>({files:vFiles,notes:vNotes,account:vAccount,admin:vAdmin})[t]())();
+  safe(refreshQuota)();
+}
+const act=(map)=>{$('#view').onclick=safe(async e=>{const b=e.target.closest('[data-act]');if(b)await map[b.dataset.act]?.(b.closest('[data-id]')?.dataset.id,b)})};
+
+/* ---------- pliki ---------- */
+let files=[];
+async function vFiles(){
+  $('#view').innerHTML=`<h1 class="pt">Pliki</h1>
+  <div class="drop" id="drop">${ico('up')}<div><b>Przeciągnij pliki tutaj</b> albo kliknij, by wybrać</div><input type="file" id="pick" multiple hidden></div>
+  <div id="queue"></div>
+  <div class="card"><div class="toolbar"><input id="fq" placeholder="Szukaj plików…"></div><div id="fl"></div></div>`;
+  const d=$('#drop');
+  d.onclick=()=>$('#pick').click();$('#pick').onchange=e=>{upload(e.target.files);e.target.value=''};
+  d.ondragover=e=>{e.preventDefault();d.classList.add('over')};d.ondragleave=()=>d.classList.remove('over');
+  d.ondrop=e=>{e.preventDefault();d.classList.remove('over');upload(e.dataTransfer.files)};
+  $('#fq').oninput=drawFiles;
+  act({
+    dl:id=>{const a=document.createElement('a');a.href=`/api/files/${id}?token=${encodeURIComponent(token)}`;document.body.append(a);a.click();a.remove()},
+    ren:async id=>{const f=files.find(x=>x.id===id);const r=await ask('Zmień nazwę',[{name:'name',label:'Nowa nazwa',value:f.name}],{ok:'Zapisz'});
+      if(r){await api('/files/'+id,{method:'PATCH',json:r});await loadFiles()}},
+    del:async id=>{const f=files.find(x=>x.id===id);
+      if(await ask('Usunąć plik?',[],{ok:'Usuń',danger:true,text:esc(f.name)+' zostanie usunięty bezpowrotnie.'})){await api('/files/'+id,{method:'DELETE'});toast('Plik usunięty');await loadFiles();refreshQuota()}}
+  });
+  await loadFiles();
+}
+async function loadFiles(){files=await api('/files');drawFiles()}
+function drawFiles(){
+  const q=($('#fq')?.value||'').toLowerCase(),l=files.filter(f=>f.name.toLowerCase().includes(q));
+  $('#fl').innerHTML=l.length?l.map(f=>{const ext=(f.name.split('.').pop()||'').slice(0,4);const h=[...ext].reduce((a,c)=>a*31+c.charCodeAt(0),7)%360;
+    return `<div class="row" data-id="${f.id}"><div class="badge" style="--h:${h}">${f.name.includes('.')?esc(ext):'plik'}</div>
+    <div class="grow"><b title="${esc(f.name)}">${esc(f.name)}</b><span class="mute">${size(f.size)} · ${date(f.created)}</span></div>
+    <button class="ic" data-act="dl" title="Pobierz">${ico('dl')}</button><button class="ic" data-act="ren" title="Zmień nazwę">${ico('edit')}</button>
+    <button class="ic del" data-act="del" title="Usuń">${ico('del')}</button></div>`}).join('')
+    :`<div class="empty">${files.length?'Brak plików pasujących do wyszukiwania.':'Nie masz jeszcze plików. Przeciągnij je na pole powyżej.'}</div>`;
+}
+function upload(list){
+  [...list].forEach(f=>{
+    const el=document.createElement('div');el.className='q';
+    el.innerHTML=`<span style="min-width:140px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span><div class="bar"><i></i></div><span class="mute">0%</span>`;
+    $('#queue').append(el);const bar=$('i',el),lbl=$('.mute',el);
+    const x=new XMLHttpRequest();x.open('POST','/api/files');x.setRequestHeader('Authorization','Bearer '+token);
+    x.upload.onprogress=e=>{const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';lbl.textContent=p+'%'};
+    x.onload=()=>{
+      if(x.status<300){lbl.textContent='Gotowe';setTimeout(()=>el.remove(),1500);loadFiles();refreshQuota()}
+      else{let m='Błąd wysyłania';try{m=JSON.parse(x.responseText).detail}catch{}el.remove();toast(`${f.name}: ${m}`,1)}};
+    x.onerror=()=>{el.remove();toast(`${f.name}: brak połączenia z serwerem`,1)};
+    const fd=new FormData();fd.append('f',f);x.send(fd);
+  });
+}
+
+/* ---------- notatki ---------- */
+let notes=[],cur=null,timer=null,dirty=false;
+async function vNotes(){
+  $('#view').innerHTML=`<h1 class="pt">Notatki</h1><div class="notes">
+  <div class="card nlist"><div class="toolbar"><input id="nq" placeholder="Szukaj…"><button class="pri" data-act="new" title="Nowa notatka">${ico('plus')}</button></div><div id="nl"></div></div>
+  <div class="card" id="ed"></div></div>`;
+  $('#nq').oninput=drawNotes;
+  act({new:async()=>{await flushNote();open(null)},pick:async id=>{await flushNote();open(+id)},
+    delnote:async()=>{if(cur&&await ask('Usunąć notatkę?',[],{ok:'Usuń',danger:true})){await api('/notes/'+cur,{method:'DELETE'});cur=null;await loadNotes();open(null)}}});
+  await loadNotes();open(notes[0]?.id??null);
+}
+async function loadNotes(){notes=await api('/notes');drawNotes()}
+function drawNotes(){
+  const q=($('#nq')?.value||'').toLowerCase();
+  const l=notes.filter(n=>(n.title+n.body).toLowerCase().includes(q));
+  $('#nl').innerHTML=l.length?l.map(n=>`<div class="note ${n.id===cur?'on':''}" data-id="${n.id}" data-act="pick"><b>${esc(n.title||'Bez tytułu')}</b><span>${esc(n.body.slice(0,60)||'Pusta notatka')}</span></div>`).join(''):'<div class="empty">Brak notatek</div>';
+}
+function open(id){
+  cur=id;const n=notes.find(x=>x.id===id)||{title:'',body:''};dirty=false;
+  $('#ed').innerHTML=`<input id="nt" placeholder="Tytuł" value="${esc(n.title)}"><textarea id="nb" placeholder="Zacznij pisać…">${esc(n.body)}</textarea>
+  <div class="foot"><span class="mute" id="st">${id?'Zapisano':'Nowa notatka'}</span><button class="ic del" data-act="delnote" title="Usuń">${ico('del')}</button></div>`;
+  $('#nt').oninput=$('#nb').oninput=()=>{dirty=true;$('#st').textContent='Zapisywanie…';clearTimeout(timer);timer=setTimeout(safe(flushNote),700)};
+  drawNotes();
+}
+async function flushNote(){
+  clearTimeout(timer);if(!dirty||!$('#nt'))return;dirty=false;
+  const json={title:$('#nt').value,body:$('#nb').value};
+  if(!cur){if(!json.title&&!json.body)return;cur=(await api('/notes',{method:'POST',json})).id}
+  else await api('/notes/'+cur,{method:'PUT',json});
+  await loadNotes();if($('#st'))$('#st').textContent='Zapisano';
+}
+
+/* ---------- konto ---------- */
+async function vAccount(){
+  $('#view').innerHTML=`<h1 class="pt">Konto</h1>
+  <div class="card"><h3>${esc(me.username)}${me.is_admin?'<span class="tag">admin</span>':''}</h3>
+   <p class="mute">Zajęte miejsce: ${size(me.used)}${me.quota_mb?' z '+me.quota_mb+' MB':' (bez limitu)'}</p></div>
+  <div class="card"><h3>Zmiana hasła</h3><form id="pf" style="max-width:340px">
+   <label>Stare hasło<input name="old_password" type="password" required autocomplete="current-password"></label>
+   <label>Nowe hasło<input name="new_password" type="password" required autocomplete="new-password"></label>
+   <button class="pri">Zmień hasło</button></form></div>`;
+  $('#pf').onsubmit=safe(async e=>{e.preventDefault();await api('/me/password',{method:'POST',json:Object.fromEntries(new FormData(e.target))});e.target.reset();toast('Hasło zmienione')});
+}
+
+/* ---------- administracja ---------- */
+const L={site_name:['Nazwa serwisu'],registration_enabled:['Otwarta rejestracja','Każdy może założyć konto'],default_quota_mb:['Domyślny limit miejsca (MB)','0 = bez limitu'],
+ max_upload_mb:['Maks. rozmiar pliku (MB)','0 = bez limitu'],allowed_extensions:['Dozwolone rozszerzenia','np. pdf,png,txt – puste = wszystkie'],
+ blocked_extensions:['Zablokowane rozszerzenia','po przecinku'],token_ttl_minutes:['Ważność sesji (min)'],min_password_length:['Min. długość hasła'],max_notes_per_user:['Maks. notatek na osobę','0 = bez limitu']};
+let cfg={},users=[];
+async function vAdmin(){
+  const [s,c,u]=await Promise.all([api('/admin/stats'),api('/admin/settings'),api('/admin/users')]);cfg=c;users=u;
+  const st=[['Użytkownicy',s.users],['Pliki',s.files],['Zajęte miejsce',size(s.bytes)],['Notatki',s.notes],['Wolne na dysku',size(s.disk_free)]];
+  $('#view').innerHTML=`<h1 class="pt">Administracja</h1>
+  <div class="stats">${st.map(([k,v])=>`<div class="stat"><b>${v}</b><span class="mute">${k}</span></div>`).join('')}</div>
+  <div class="card"><div class="toolbar" style="justify-content:space-between"><h3 style="margin:0">Użytkownicy</h3><button class="pri" data-act="adduser">${ico('plus')}Dodaj</button></div>
+   ${users.map(u=>{const q=u.quota_mb*1e6;return `<div class="row" data-id="${u.id}"><div class="av">${esc(u.username[0])}</div>
+   <div class="grow"><b>${esc(u.username)}${u.is_admin?'<span class="tag">admin</span>':''}${u.is_active?'':'<span class="tag red">zablokowany</span>'}</b>
+   <span class="mute">${size(u.used)} / ${q?size(q):'bez limitu'}</span>${q?`<div class="mini"><i style="width:${Math.min(100,u.used/q*100)}%"></i></div>`:''}</div>
+   <div class="acts"><button class="ghost" data-act="quota">Limit</button><button class="ghost" data-act="pw">Hasło</button>
+   <button class="ghost" data-act="block">${u.is_active?'Zablokuj':'Odblokuj'}</button><button class="ghost" data-act="adm">${u.is_admin?'Odbierz admina':'Nadaj admina'}</button>
+   <button class="ic del" data-act="rm" title="Usuń">${ico('del')}</button></div></div>`}).join('')}</div>
+  <div class="card"><h3>Konfiguracja serwera</h3><form id="cf" class="set">${Object.keys(cfg).map(k=>{const [l,h]=L[k]||[k];const v=cfg[k];
+   return `<label for="s_${k}">${l}${h?`<small>${h}</small>`:''}</label>`+(typeof v==='boolean'?`<input class="sw" type="checkbox" id="s_${k}" ${v?'checked':''}>`
+   :`<input id="s_${k}" ${typeof v==='number'?'type="number" min="0"':''} value="${esc(v)}">`)}).join('')}
+   <div></div><button class="pri" style="justify-self:start">Zapisz konfigurację</button></form></div>`;
+  $('#cf').onsubmit=safe(async e=>{e.preventDefault();const b={};
+    for(const k in cfg){const i=$('#s_'+k);b[k]=typeof cfg[k]==='boolean'?i.checked:i.value}
+    cfg=await api('/admin/settings',{method:'PUT',json:b});toast('Konfiguracja zapisana');pub=await fetch('/api/public').then(r=>r.json());$('#brand').textContent=pub.site_name;document.title=pub.site_name});
+  const U=id=>users.find(u=>u.id==id),P=(id,json)=>api('/admin/users/'+id,{method:'PATCH',json}).then(vAdmin);
+  act({
+    adduser:async()=>{const r=await ask('Nowy użytkownik',[{name:'username',label:'Nazwa'},{name:'password',label:'Hasło',type:'password'}],{ok:'Utwórz'});
+      if(r){await api('/admin/users',{method:'POST',json:r});toast('Użytkownik dodany');vAdmin()}},
+    quota:async id=>{const r=await ask('Limit miejsca',[{name:'q',label:'Limit w MB (0 = bez limitu)',type:'number',value:U(id).quota_mb}],{ok:'Zapisz'});if(r)await P(id,{quota_mb:+r.q})},
+    pw:async id=>{const r=await ask('Nowe hasło',[{name:'p',label:'Hasło dla '+U(id).username,type:'password'}],{ok:'Ustaw'});if(r){await P(id,{password:r.p});toast('Hasło zmienione')}},
+    block:id=>P(id,{is_active:!U(id).is_active}),adm:id=>P(id,{is_admin:!U(id).is_admin}),
+    rm:async id=>{if(await ask('Usunąć użytkownika?',[],{ok:'Usuń',danger:true,text:`Konto „${esc(U(id).username)}” i wszystkie jego pliki oraz notatki zostaną usunięte.`})){
+      await api('/admin/users/'+id,{method:'DELETE'});toast('Użytkownik usunięty');vAdmin()}}
+  });
+}
+window.addEventListener('beforeunload',()=>{if(dirty)flushNote()});
+boot();
+</script>
+</body>
+</html>
