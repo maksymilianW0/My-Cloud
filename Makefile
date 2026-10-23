@@ -47,7 +47,7 @@ clean:
 	rm -rf $(PROJECT_DIR)/src/__pycache__
 	rm -rf $(PROJECT_DIR)/__pycache__
 
-cleanup: clean
+cleanup: clean reset
 	rm -rf $(VENV)
 
 
