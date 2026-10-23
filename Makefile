@@ -7,7 +7,9 @@ SERVER_START_FILE := $(PROJECT_DIR)/src/main.py
 STATIC_DIR := $(PROJECT_DIR)/src/static
 APP_NAME := app
 
-.PHONY: help setup run build clean cleanup reset
+.PHONY: help setup run build clean cleanup reset start
+
+start: run
 
 help:
 	@echo "Dostępne komendy:"
