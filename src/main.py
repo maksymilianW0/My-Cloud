@@ -317,7 +317,7 @@ def own_file(fid: str, u):
 def download(fid: str):
     u = get_current_user()
     r = own_file(fid, u)
-    return send_file(FILES / str(u["id"]) / fid, as_attachment=True, download_name=r["name"])
+    return send_file((FILES / str(u["id"]) / fid).resolve(), as_attachment=True, download_name=r["name"])
 
 
 @app.patch("/api/files/<fid>")
