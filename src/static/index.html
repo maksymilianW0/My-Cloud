@@ -311,7 +311,18 @@ async function vAccount(){
   <div class="card"><h3>Zmiana hasła</h3><form id="pf" style="max-width:340px">
    <label>Stare hasło<input name="old_password" type="password" required autocomplete="current-password"></label>
    <label>Nowe hasło<input name="new_password" type="password" required autocomplete="new-password"></label>
-   <button class="pri">Zmień hasło</button></form></div>`;
+   <button class="pri">Zmień hasło</button></form></div>
+   
+<button id="google-login">
+    <img
+        src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+        alt=""
+        width="18"
+        height="18"
+    >
+    <span>Połącz konto Google</span>
+</button>
+`;
   $('#pf').onsubmit=safe(async e=>{e.preventDefault();await api('/me/password',{method:'POST',json:Object.fromEntries(new FormData(e.target))});e.target.reset();toast('Hasło zmienione')});
 }
 
@@ -350,6 +361,9 @@ async function vAdmin(){
       await api('/admin/users/'+id,{method:'DELETE'});toast('Użytkownik usunięty');vAdmin()}}
   });
 }
+document.getElementById("google-login").addEventListener("click", () => {
+    window.location.href = "/auth/google";
+});
 window.addEventListener('beforeunload',()=>{if(dirty)flushNote()});
 boot();
 </script>
