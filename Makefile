@@ -30,7 +30,7 @@ $(VENV)/.setup_done: $(PROJECT_DIR)/requirements.txt
 	$(PYTHON) -m pip install pyinstaller
 	@touch $@
 
-run: reset setup
+run:
 	$(PYTHON) $(SERVER_START_FILE)
 
 build: setup
@@ -52,5 +52,5 @@ cleanup: clean reset
 
 
 reset:
-	rm -rf $(PROJECT_DIR)/data
-	mkdir $(PROJECT_DIR)/data
+	rm -rf $(PROJECT_DIR)/local/data
+	mkdir $(PROJECT_DIR)/local/data

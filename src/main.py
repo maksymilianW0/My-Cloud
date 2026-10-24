@@ -12,6 +12,12 @@ from pydantic import BaseModel
 
 import uvicorn
 
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 DATA = Path(os.getenv("DATA_DIR", "data"))
 FILES = DATA / "files"
 FILES.mkdir(parents=True, exist_ok=True)
