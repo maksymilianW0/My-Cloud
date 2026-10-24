@@ -188,7 +188,9 @@ function ask(title,fields=[],{ok='OK',danger=false,text=''}={}){
 
 /* ---------- logowanie ---------- */
 let mode='login';
+const GMSG={ok:'Konto Google połączone',denied:'Anulowano łączenie z Google',scope:'Trzeba zezwolić na dostęp do danych aplikacji na Dysku Google',taken:'To konto Google jest już połączone z innym kontem SelfCloud',invalid:'Link wygasł – spróbuj ponownie',error:'Nie udało się połączyć z Google'};
 async function boot(){
+  const gp=new URLSearchParams(location.search).get('google');if(gp)history.replaceState(null,'',location.pathname);
   pub=await fetch('/api/public').then(r=>r.json()).catch(()=>({site_name:'SelfCloud'}));
   document.title=pub.site_name;$('#heroName').textContent=pub.site_name;$('#brand').textContent=pub.site_name;
   $('#regBtn').classList.toggle('hide',!pub.registration_enabled);
@@ -198,8 +200,9 @@ async function boot(){
   $('#uname').textContent=me.username;$('#out').innerHTML=ico('out');
   const tabs=[['files','Pliki'],['notes','Notatki'],['account','Konto'],...(me.is_admin?[['admin','Administracja']]:[])];
   $('#nav').innerHTML=tabs.map(([k,l])=>`<button class="nav" data-tab="${k}">${ico(k)}<span>${l}</span></button>`).join('');
+  if(gp)tab='account';
   if(!tabs.some(t=>t[0]===tab))tab='files';
-  show(tab);
+  show(tab);if(gp)toast(GMSG[gp]||'Nieznany wynik logowania Google',gp!=='ok');
 }
 $('#af').onsubmit=async e=>{
   e.preventDefault();$('#lerr').textContent='';
@@ -251,7 +254,7 @@ function drawFiles(){
   const q=($('#fq')?.value||'').toLowerCase(),l=files.filter(f=>f.name.toLowerCase().includes(q));
   $('#fl').innerHTML=l.length?l.map(f=>{const ext=(f.name.split('.').pop()||'').slice(0,4);const h=[...ext].reduce((a,c)=>a*31+c.charCodeAt(0),7)%360;
     return `<div class="row" data-id="${f.id}"><div class="badge" style="--h:${h}">${f.name.includes('.')?esc(ext):'plik'}</div>
-    <div class="grow"><b title="${esc(f.name)}">${esc(f.name)}</b><span class="mute">${size(f.size)} · ${date(f.created)}</span></div>
+    <div class="grow"><b title="${esc(f.name)}">${esc(f.name)}</b><span class="mute">${size(f.size)} · ${date(f.created)}${f.backend==='drive'?' · Dysk Google':''}</span></div>
     <button class="ic" data-act="dl" title="Pobierz">${ico('dl')}</button><button class="ic" data-act="ren" title="Zmień nazwę">${ico('edit')}</button>
     <button class="ic del" data-act="del" title="Usuń">${ico('del')}</button></div>`}).join('')
     :`<div class="empty">${files.length?'Brak plików pasujących do wyszukiwania.':'Nie masz jeszcze plików. Przeciągnij je na pole powyżej.'}</div>`;
@@ -305,31 +308,37 @@ async function flushNote(){
 
 /* ---------- konto ---------- */
 async function vAccount(){
+  const g=await api('/google');
+  const gbtn=`<button data-act="gconnect"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" width="18" height="18"><span>${g.linked?'Połącz ponownie':'Połącz konto Google'}</span></button>`;
+  const gcard=!g.available&&!g.linked?'':`<div class="card"><h3>Google Drive</h3>`+(g.linked?
+    `<p class="mute">Połączono z kontem <b>${esc(g.email||'Google')}</b>. Na Dysku Google: ${g.drive_files} plików (${size(g.drive_bytes)}).</p>
+     <label style="display:flex;gap:12px;align-items:center;font-weight:400"><input class="sw" id="gup" type="checkbox" style="margin:0" ${g.upload_to_drive?'checked':''}>Zapisuj nowe pliki na Dysku Google</label>
+     <p class="mute">Pliki trafiają do ukrytego folderu danych aplikacji – nie widać ich w zwykłym Dysku Google i nie liczą się do limitu miejsca na serwerze.</p>
+     <div class="acts" style="gap:8px">${gbtn}<button class="bad" data-act="gdisc">Odłącz</button></div>`
+    :`<p class="mute">Połącz konto Google, aby zapisywać pliki w ukrytym folderze danych aplikacji na swoim Dysku Google.</p>${gbtn}`)+`</div>`;
   $('#view').innerHTML=`<h1 class="pt">Konto</h1>
   <div class="card"><h3>${esc(me.username)}${me.is_admin?'<span class="tag">admin</span>':''}</h3>
-   <p class="mute">Zajęte miejsce: ${size(me.used)}${me.quota_mb?' z '+me.quota_mb+' MB':' (bez limitu)'}</p></div>
+   <p class="mute">Zajęte miejsce na serwerze: ${size(me.used)}${me.quota_mb?' z '+me.quota_mb+' MB':' (bez limitu)'}</p></div>
   <div class="card"><h3>Zmiana hasła</h3><form id="pf" style="max-width:340px">
    <label>Stare hasło<input name="old_password" type="password" required autocomplete="current-password"></label>
    <label>Nowe hasło<input name="new_password" type="password" required autocomplete="new-password"></label>
    <button class="pri">Zmień hasło</button></form></div>
-   
-<button id="google-login">
-    <img
-        src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-        alt=""
-        width="18"
-        height="18"
-    >
-    <span>Połącz konto Google</span>
-</button>
-`;
+  ${gcard}`;
   $('#pf').onsubmit=safe(async e=>{e.preventDefault();await api('/me/password',{method:'POST',json:Object.fromEntries(new FormData(e.target))});e.target.reset();toast('Hasło zmienione')});
+  $('#gup')?.addEventListener('change',safe(async e=>{await api('/google',{method:'PATCH',json:{upload_to_drive:e.target.checked}});toast('Zapisano')}));
+  act({
+    gconnect:async()=>{const d=await api('/google/connect',{method:'POST'});location.href=d.url},
+    gdisc:async()=>{
+      const n=g.drive_files;
+      const r=await ask('Odłączyć konto Google?',[],{ok:'Odłącz',danger:true,text:n?`Masz ${n} plików na Dysku Google. Po odłączeniu znikną z SelfCloud (zostaną w ukrytym folderze aplikacji na Twoim Dysku Google). Pobierz je wcześniej, jeśli są Ci potrzebne.`:'Nowe pliki będą zapisywane na serwerze.'});
+      if(r){await api('/google?force=1',{method:'DELETE'});toast('Konto Google odłączone');vAccount()}}
+  });
 }
 
 /* ---------- administracja ---------- */
 const L={site_name:['Nazwa serwisu'],registration_enabled:['Otwarta rejestracja','Każdy może założyć konto'],default_quota_mb:['Domyślny limit miejsca (MB)','0 = bez limitu'],
  max_upload_mb:['Maks. rozmiar pliku (MB)','0 = bez limitu'],allowed_extensions:['Dozwolone rozszerzenia','np. pdf,png,txt – puste = wszystkie'],
- blocked_extensions:['Zablokowane rozszerzenia','po przecinku'],token_ttl_minutes:['Ważność sesji (min)'],min_password_length:['Min. długość hasła'],max_notes_per_user:['Maks. notatek na osobę','0 = bez limitu']};
+ blocked_extensions:['Zablokowane rozszerzenia','po przecinku'],token_ttl_minutes:['Ważność sesji (min)'],min_password_length:['Min. długość hasła'],max_notes_per_user:['Maks. notatek na osobę','0 = bez limitu'],google_drive_enabled:['Integracja z Google Drive','Łączenie kont Google i zapis plików w ich ukrytym folderze']};
 let cfg={},users=[];
 async function vAdmin(){
   const [s,c,u]=await Promise.all([api('/admin/stats'),api('/admin/settings'),api('/admin/users')]);cfg=c;users=u;
@@ -361,9 +370,6 @@ async function vAdmin(){
       await api('/admin/users/'+id,{method:'DELETE'});toast('Użytkownik usunięty');vAdmin()}}
   });
 }
-document.getElementById("google-login").addEventListener("click", () => {
-    window.location.href = "/auth/google";
-});
 window.addEventListener('beforeunload',()=>{if(dirty)flushNote()});
 boot();
 </script>
