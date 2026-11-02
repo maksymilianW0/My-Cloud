@@ -451,4 +451,13 @@ app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    ssl_certfile = os.getenv("SSL_CERT_FILE", None)
+    ssl_keyfile = os.getenv("SSL_KEY_FILE", None)
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("SERVER_PORT", 8080))
+    uvicorn.run(app,
+                host=host,
+                port=port,
+                ssl_certfile=ssl_certfile,
+                ssl_keyfile=ssl_keyfile
+            )
