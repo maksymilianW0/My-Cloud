@@ -33,6 +33,9 @@ $(VENV)/.setup_done: $(PROJECT_DIR)/requirements.txt
 run:
 	$(PYTHON) $(SERVER_START_FILE)
 
+rerun: reset
+	$(PYTHON) $(SERVER_START_FILE)
+
 build: setup
 	$(PYTHON) -m PyInstaller --onefile --clean --noconfirm \
 		--name $(APP_NAME) \

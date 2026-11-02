@@ -12,6 +12,8 @@ from pydantic import BaseModel
 
 import uvicorn
 
+import mimetypes
+
 
 from dotenv import load_dotenv
 
@@ -30,7 +32,7 @@ SECRET = KEY_PATH.read_text()
 # Domyślna konfiguracja – admin może ją zmieniać w panelu (zapis w bazie).
 DEFAULT_SETTINGS = {
     "site_name": "SelfCloud",
-    "registration_enabled": True,     # czy każdy może założyć konto
+    "registration_enabled": False,    # czy każdy może założyć konto
     "default_quota_mb": 1024,         # limit miejsca dla nowych kont (0 = bez limitu)
     "max_upload_mb": 100,             # maks. rozmiar jednego pliku
     "allowed_extensions": "",         # np. "pdf,png,txt" – puste = wszystkie
@@ -403,6 +405,46 @@ def put_settings(new: dict, _=Depends(admin_user)):
         db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (k, "1" if v is True else "0" if v is False else str(v)))
     db.commit()
     return cfg()
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # SW musi być serwowany z "/", żeby jego zasięg obejmował całą aplikację
+    # (z /js/sw.js miałby zasięg tylko /js/)
+    return FileResponse(Path(__file__).parent / "static" / "js" / "sw.js",
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+
+@app.get("/icons/{icon_name}")
+async def get_icon(icon_name: str):
+    icon_path = ((Path(__file__).parent / "static" / "img" / "icons") / icon_name).resolve()
+
+    if not icon_path.is_relative_to((Path(__file__).parent / "static" / "img" / "icons").resolve()):
+        raise HTTPException(status_code=400, detail="Invalid icon path")
+
+    if not icon_path.is_file():
+        raise HTTPException(status_code=404, detail="Icon not found")
+
+    return FileResponse(
+        icon_path,
+        media_type=mimetypes.guess_type(icon_path)[0],
+        headers={"Cache-Control": "no-cache"}
+    )
+
+
+@app.get("/manifest.webmanifest")
+async def get_manifest():
+    manifest_path = (Path(__file__).parent / "static" / "manifest.webmanifest").resolve()
+
+    return FileResponse(
+        manifest_path,
+        media_type=mimetypes.guess_type(manifest_path)[0],
+        headers={"Cache-Control": "no-cache"}
+    )
+
+
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
